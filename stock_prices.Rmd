@@ -1,0 +1,70 @@
+---
+title: "Stock Prices"
+author: "Trenton Pulsipher"
+date: "10/15/2018"
+output: html_document
+---
+
+```{r setup, error = F, message = F, warning = F}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+library(shiny)
+library(Quandl)
+  Quandl.api_key("1xrGSwDRn_MapbqUyt2x") # my personal free key
+library(tidyverse)
+library(lubridate)
+library(rbokeh)
+
+  ## Grab All Tickers available for free from Quandl
+# allTickers <- system('curl "https://www.quandl.com/api/v3/databases/WIKI/codes?api_key=1xrGSwDRn_MapbqUyt2x"', inter = T)
+allTickers <- read_csv("secwiki_tickers.csv") %>%
+  filter(str_detect(Price, "WIKI"))
+
+```
+
+
+```{r functions, error = F, message = F, warning = F}
+
+# function to grab the data from Quandl
+get_raw_data <- function(ticker) {
+  # reminder: my Quandl API_key is hard coded below
+  url <- paste0("https://www.quandl.com/api/v3/datasets/WIKI/", ticker, "/data.csv?collapse=daily&column_index=4&api_key=1xrGSwDRn_MapbqUyt2x")
+  system(paste0('curl ', url), intern = T)
+}
+
+```
+
+
+#### Data
+
+##### Quandl
+Quandl provides access to data for financial modelers. One data source, [WIKI](https://www.quandl.com/databases/WIKIP), is free and represents "End of day stock prices, dividends and splits for 3,000 US companies, curated by the Quandl community and released into the public domain."
+
+
+#### Analysis
+
+##### Time-Series
+
+```{r functions, error = F, message = F, warning = F}
+allTickers %>% 
+  filter(Ticker == input$ticker) %>%
+  select(Name, Sector, Industry))
+
+
+# grab the raw data from Quandl
+get_raw_data(input$ticker) %>%
+  as.tibble() %>%
+  slice(-1) %>% # remove the header line
+  mutate(Date = ymd(unlist(lapply(str_split(value, ","), "[[", 1))),
+         Close = as.numeric(unlist(lapply(str_split(value, ","), "[[", 5)))) %>%
+  figure(xlab = "", ylab = "Price at Closing (Daily)") %>%
+    ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
+
+
+## NOTES:
+# https://www.quandl.com/databases/WIKIP
+# DESCRIPTION of WIKI data: End of day stock prices, dividends and splits for 3,000 US companies, curated by the Quandl community and released into the public domain.
+# could vary more than just closing price
+# could provide shorter window (say last year) if desired
+
