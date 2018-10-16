@@ -36,6 +36,12 @@ ui <- fluidPage(
                      "Stock Ticker:",
                      choices = allTickers %>% select(Ticker),
                      selected = "AAPL"),
+         numericInput("numDaysForecast",
+                     "Number of Days to Forecast:",
+                     value = 30,
+                     min = 5,
+                     max = 365,
+                     step = 5),
          tableOutput("tickerInfo"),
          textOutput("description")
       ),
@@ -43,8 +49,8 @@ ui <- fluidPage(
       mainPanel(
         tabsetPanel(
           tabPanel("Historical", rbokehOutput("tsPlot")),
-          tabPanel("Short-term Forecast", plotOutput("forecast")),
-          tabPanel("Quandl Data", DT::dataTableOutput("dataTable"))
+          tabPanel("Forecast", plotOutput("forecast")),
+          tabPanel("Data Table", DT::dataTableOutput("dataTable"))
         )
       )
    )
@@ -77,7 +83,10 @@ server <- function(input, output) {
   output$tsPlot <- renderRbokeh({
     data2use() %>%
       figure(xlab = "", ylab = "Price at Closing (Daily)") %>%
-      ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
+      ly_points(Date, Close, 
+                hover = list("Date" = Date, "Closing Price" = Close), 
+                alpha = 0.25,
+                size = 5)
   })
   
   output$forecast <- renderPlot({
@@ -89,11 +98,11 @@ server <- function(input, output) {
       tk_ts(select = Close) %>%
       # Exponential smoothing (error, trend, seasonal) model
       ets() %>%
-      forecast(h = 30) %>%
+      forecast(h = input$numDaysForecast) %>%
       # back to tibble
       tk_tbl(timetk_idx = TRUE) %>%
       # convert back to date
-      mutate(Date = max(data2use()$Date) + days(1:30)) %>%
+      mutate(Date = max(data2use()$Date) + days(1:input$numDaysForecast)) %>%
       rename(Forecast = `Point Forecast`,
              CI95LB = `Lo 95`,
              CI95UB = `Hi 95`) %>%
@@ -109,7 +118,7 @@ server <- function(input, output) {
         theme_bw() +
         labs(x = "", 
              y = "Price at Closing (Daily)", 
-             title = "30-day Forecast (red) with 95% Confidence Interval Bands")
+             title = "Forecast (red) with 95% Confidence Interval Bands")
   })
   #   renderRbokeh({
   #   data() %>%

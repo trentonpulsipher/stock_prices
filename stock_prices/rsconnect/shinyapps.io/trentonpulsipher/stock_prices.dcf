@@ -5,6 +5,6 @@ account: trentonpulsipher
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 513144
-bundleId: 1643571
+bundleId: 1646561
 url: https://trentonpulsipher.shinyapps.io/stock_prices/
-when: 1539607257.20909
+when: 1539726132.53684
