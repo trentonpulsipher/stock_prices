@@ -53,10 +53,11 @@ server <- function(input, output) {
                                     filter(Ticker == input$ticker) %>%
                                     select(Name, Sector, Industry))
   output$description <- renderText(
-    "DESCRIPTION of WIKI data\nhttps://www.quandl.com/databases/WIKIP\nEnd of day stock prices, dividends and splits for 3,000 US companies, curated by the Quandl community and released into the public domain."
+    "DESCRIPTION of WIKI data\nhttps://www.quandl.com/databases/WIKIP
+    End of day stock prices, dividends and splits for 3,000 US companies, curated by the Quandl community and released into the public domain."
   )
   # grab the raw data from Quandl
-  data <- reactive({
+  data2use <- reactive({
     get_raw_data(input$ticker) %>%
     as.tibble() %>%
     slice(-1) %>% # remove the header line
@@ -70,7 +71,7 @@ server <- function(input, output) {
   })
   # create the forecast
   forecasted <- reactive({
-    data() %>% 
+    data2use() %>% 
     # use the last 3 years for prediction
     filter(Date > (max(Date, na.rm = T) - years(3))) %>%
     # convert from tibble to ts structure
@@ -89,20 +90,18 @@ server <- function(input, output) {
   })
   
   output$tsPlot <- renderRbokeh({
-    data() %>%
+    data2use() %>%
       figure(xlab = "", ylab = "Price at Closing (Daily)") %>%
       ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
   })
   output$forecast <- renderPlot({
-    dataAll <- data() 
-    dataForecasted <- forecasted()
-    dataAll %>%
+    data2use() %>%
     filter(Date > (max(Date, na.rm = T) - years(3))) %>%
     ggplot(aes(x = Date, y = Close)) +
       geom_point(color = "blue", alpha = 0.5) +
       geom_ribbon(aes(x = Date, y = Forecast, ymin = CI95LB, ymax = CI95UB), 
-                  data = dataForecasted, fill = "red", alpha = 0.5) +
-      geom_line(aes(x = Date, y = Forecast), data = dataForecasted, color = "red") +
+                  data = forecasted(), fill = "red", alpha = 0.5) +
+      geom_line(aes(x = Date, y = Forecast), data = forecasted(), color = "red") +
       theme_bw() +
       labs(x = "", 
            y = "Price at Closing (Daily)", 
@@ -115,7 +114,9 @@ server <- function(input, output) {
   #     ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
   # })
   output$dataTable <- DT::renderDataTable({
-    tmp <- data()
+    tmp <- data2use() #%>%
+      # filter(Date > (max(Date, na.rm = T) - years(3))) %>%
+      # left_join(forecasted() %>% arrange(desc(Date)), by = "Date")
     DT::datatable(tmp)
   })#, options = list(pageLength = 10)))
 }
