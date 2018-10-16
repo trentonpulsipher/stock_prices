@@ -5,6 +5,8 @@ library(Quandl)
 library(tidyverse)
 library(lubridate)
 library(rbokeh)
+library(sweep)
+  
 
 # function to grab the data from Quandl
 get_raw_data <- function(ticker) {
@@ -38,7 +40,7 @@ ui <- fluidPage(
       mainPanel(
         tabsetPanel(
           tabPanel("Historical", rbokehOutput("tsPlot")),
-          tabPanel("Short-term Forecast", rbokehOutput("forecast")),
+          tabPanel("Short-term Forecast", plotOutput("forecast")),
           tabPanel("Data", DT::dataTableOutput("dataTable"))
         )
       )
@@ -66,18 +68,52 @@ server <- function(input, output) {
     select(Date, Close, Volume) %>%
     arrange(desc(Date))
   })
-
+  # create the forecast
+  forecasted <- reactive({
+    data() %>% 
+    # use the last 3 years for prediction
+    filter(Date > (max(Date, na.rm = T) - years(3))) %>%
+    # convert from tibble to ts structure
+    tk_ts(select = Close) %>%
+    # Exponential smoothing (error, trend, seasonal) model
+    ets() %>%
+    forecast(h = 30) %>%
+    # back to tibble
+    tk_tbl(timetk_idx = TRUE) %>%
+    # convert back to date
+    mutate(Date = max(data$Date) + days(1:30)) %>%
+    rename(Forecast = `Point Forecast`,
+           CI95LB = `Lo 95`,
+           CI95UB = `Hi 95`) %>%
+    select(Date, Forecast, CI95LB, CI95UB)
+  })
+  
   output$tsPlot <- renderRbokeh({
     data() %>%
       figure(xlab = "", ylab = "Price at Closing (Daily)") %>%
       ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
   })
-  output$forecast <- renderRbokeh({
-    data() %>%
-      filter(Date > (max(Date, na.rm = T) - months(3))) %>%
-      figure(xlab = "", ylab = "Price at Closing (Daily") %>%
-      ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
+  output$forecast <- renderPlot({
+    dataAll <- data() 
+    dataForecasted <- forecasted()
+    dataAll %>%
+    filter(Date > (max(Date, na.rm = T) - years(3))) %>%
+    ggplot(aes(x = Date, y = Close)) +
+      geom_point(color = "blue", alpha = 0.5) +
+      geom_ribbon(aes(x = Date, y = Forecast, ymin = CI95LB, ymax = CI95UB), 
+                  data = dataForecasted, fill = "red", alpha = 0.5) +
+      geom_line(aes(x = Date, y = Forecast), data = dataForecasted, color = "red") +
+      theme_bw() +
+      labs(x = "", 
+           y = "Price at Closing (Daily)", 
+           title = "30-day Forecast (red) with 95% Confidence Interval Bands")
   })
+  #   renderRbokeh({
+  #   data() %>%
+  #     filter(Date > (max(Date, na.rm = T) - months(3))) %>%
+  #     figure(xlab = "", ylab = "Price at Closing (Daily") %>%
+  #     ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close))
+  # })
   output$dataTable <- DT::renderDataTable({
     tmp <- data()
     DT::datatable(tmp)
