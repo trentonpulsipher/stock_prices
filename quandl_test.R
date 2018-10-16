@@ -52,7 +52,7 @@ allTickers <- read_csv("~/Downloads/secwiki_tickers.csv") %>%
   filter(str_detect(Price, "WIKI"))
 
 
-data <- get_raw_data("AAPL") %>%
+data2use <- get_raw_data("AAPL") %>%
   as.tibble() %>%
   slice(-1) %>% # remove the header line
   mutate(
@@ -63,7 +63,7 @@ data <- get_raw_data("AAPL") %>%
   select(Date, Close, Volume) %>%
   arrange(desc(Date))
 
-forecasted <- data %>% 
+forecasted <- data2use %>% 
   # use the last 3 years for prediction
   filter(Date > (max(Date, na.rm = T) - years(3))) %>%
   # convert from tibble to ts structure
@@ -74,7 +74,7 @@ forecasted <- data %>%
   # back to tibble
   tk_tbl(timetk_idx = TRUE) %>%
   # convert back to date
-  mutate(Date = max(data$Date) + days(1:30)) %>%
+  mutate(Date = max(data2use$Date) + days(1:30)) %>%
   rename(Forecast = `Point Forecast`,
          CI95LB = `Lo 95`,
          CI95UB = `Hi 95`) %>%
