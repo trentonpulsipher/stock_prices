@@ -18,6 +18,29 @@ get_raw_data <- function(ticker) {
   system(paste0('curl ', url), intern = T)
 }
 
+# function to forecast using random-walk
+random_walk <- function(lastPrice = data2use() %>% pull(Close) %>% last(),
+                        lastDate = data2use() %>% pull(Date) %>% max(na.rm = T),
+                        days = 30, #input$numDaysForecast
+                        drift = 0,
+                        sig = 1,
+                        numMCs = 500) {
+  out <- list()
+  for(i in 1:numMCs) {
+    out[[i]] <- rep(NA, length = days + 1)
+    out[[i]][1] <- lastPrice
+    for(j in 2:(days+1)) {
+      out[[i]][j] = out[[i]][j-1] + rnorm(1, 0, sig) + drift
+    }
+  }
+  data.frame(Date = lastDate + 1:days,
+             Forecast = apply(do.call(rbind,out)[,-1], 2, quantile, probs = 0.5),
+             CI95LB = apply(do.call(rbind,out)[,-1], 2, quantile, probs = 0.05),
+             CI95UB = apply(do.call(rbind,out)[,-1], 2, quantile, probs = 0.95)) %>%
+    as.tibble()
+}
+
+
 ## Grab All Tickers available for free from Quandl
 # allTickers <- system('curl "https://www.quandl.com/api/v3/databases/WIKI/codes?api_key=1xrGSwDRn_MapbqUyt2x"', inter = T)
 allTickers <- read_csv("secwiki_tickers.csv") %>%
@@ -36,6 +59,10 @@ ui <- fluidPage(
                      "Stock Ticker:",
                      choices = allTickers %>% select(Ticker),
                      selected = "AAPL"),
+         radioButtons("method",
+                      "Forecast Method",
+                      choices = c("ETS time-series", "Random Walk"),
+                      selected = "Random Walk"),
          numericInput("numDaysForecast",
                      "Number of Days to Forecast:",
                      value = 30,
@@ -90,24 +117,44 @@ server <- function(input, output) {
   })
   
   output$forecast <- renderPlot({
-    # create the forecast
-    forecastData <- data2use() %>% 
-      # use the last 3 years for prediction
-      filter(Date > (max(Date, na.rm = T) - years(3))) %>%
-      # convert from tibble to ts structure
-      tk_ts(select = Close) %>%
-      # Exponential smoothing (error, trend, seasonal) model
-      ets() %>%
-      forecast(h = input$numDaysForecast) %>%
-      # back to tibble
-      tk_tbl(timetk_idx = TRUE) %>%
-      # convert back to date
-      mutate(Date = max(data2use()$Date) + days(1:input$numDaysForecast)) %>%
-      rename(Forecast = `Point Forecast`,
-             CI95LB = `Lo 95`,
-             CI95UB = `Hi 95`) %>%
-      select(Date, Forecast, CI95LB, CI95UB)
-    
+    if(input$method == "ETS time-series") {
+      # create the forecast
+      forecastData <- data2use() %>% 
+        # use the last 3 years for prediction
+        filter(Date > (max(Date, na.rm = T) - years(3))) %>%
+        # convert from tibble to ts structure
+        tk_ts(select = Close) %>%
+        # Exponential smoothing (error, trend, seasonal) model
+        ets() %>%
+        forecast(h = input$numDaysForecast) %>%
+        # back to tibble
+        tk_tbl(timetk_idx = TRUE) %>%
+        # convert back to date
+        mutate(Date = max(data2use()$Date) + days(1:input$numDaysForecast)) %>%
+        rename(Forecast = `Point Forecast`,
+               CI95LB = `Lo 95`,
+               CI95UB = `Hi 95`) %>%
+        select(Date, Forecast, CI95LB, CI95UB)
+    } 
+    if(input$method == "Random Walk") {
+      tmp <- data2use()
+      numObs <- tmp %>% 
+        filter(Date > (max(Date, na.rm = T) - years(3))) %>%
+        pull(Date) %>%
+        length()
+      # calculate the stdev for the random walk
+      sig <- tmp %>% 
+        filter(Date > (max(Date, na.rm = T) - years(1))) %>% 
+        pull(Close) %>% 
+        sd(na.rm = T) #/ (numObs)
+      
+      forecastData <- random_walk(lastPrice = tmp %>% arrange(Date) %>% pull(Close) %>% last(),
+                                  days = input$numDaysForecast,
+                                  drift = 0,
+                                  sig = sig,
+                                  numMCs = 1000,
+                                  lastDate = tmp %>% pull(Date) %>% max(na.rm = T))
+    }
     data2use() %>%
       filter(Date > (max(Date, na.rm = T) - years(3))) %>%
       ggplot(aes(x = Date, y = Close)) +

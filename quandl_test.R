@@ -98,3 +98,34 @@ data %>%
 #   ly_points(Date, Close, hover = list("Date" = Date, "Closing Price" = Close)) %>%
 #   ly_lines(Date, Forecast, data = forecasted)
 
+
+AR1 <- arima(diff(data2use %>% 
+                   filter(Date > (max(Date, na.rm = T) - years(1))) %>% 
+                   pull(Close)), order = c(1, 0, 0))
+RW <- arima(diff(data2use %>%
+                   filter(Date > (max(Date, na.rm = T) - years(1))) %>% 
+                   pull(Close)), order = c(0, 1, 0))
+# random walk model
+
+
+function(lastPrice = data2use$Close[length(data2use$Close)],
+         days = 30, #input$numDaysForecast
+         numMCs = 500) {
+  # calculate the mean for the random walk
+#  mu <- data2use %>% filter(Date > "2018-01-01") %>% pull(Close) %>% mean(na.rm = T)
+  # calculate the stdev for the random walk
+  sig <- data2use %>% filter(Date > "2018-01-01") %>% pull(Close) %>% sd(na.rm = T)
+
+  out <- list()
+  for(i in 1:numMCs) {
+    out[[i]] <- rep(NA, length = days + 1)
+    out[[i]][1] <- lastPrice
+    for(j in 2:(days+1)) {
+      out[[i]][j] = out[[i]][j-1] + rnorm(1, 0, sig) + drift
+    }
+  }
+  apply(do.call(rbind,out)[,-1], 2, quantile, probs = 0.5)
+}
+
+
+
